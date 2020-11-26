@@ -12,6 +12,8 @@ import org.jetbrains.kotlin.codegen.FunctionCodegen
 import org.jetbrains.kotlin.codegen.ImplementationBodyCodegen
 import org.jetbrains.kotlin.codegen.JvmKotlinType
 import org.jetbrains.kotlin.codegen.OwnerKind.ERASED_INLINE_CLASS
+import org.jetbrains.kotlin.codegen.StackValue
+import org.jetbrains.kotlin.codegen.StringConcatGenerator
 import org.jetbrains.kotlin.codegen.context.FieldOwnerContext
 import org.jetbrains.kotlin.codegen.context.MethodContext
 import org.jetbrains.kotlin.codegen.extensions.ExpressionCodegenExtension
@@ -180,14 +182,15 @@ private class ToStringGenerator(
     }
 
     val iv = InstructionAdapter(mv)
+    val generator = StringConcatGenerator.create(generationState, iv)
 
     mv.visitCode()
-    AsmUtil.genStringBuilderConstructor(iv)
+    generator.genStringBuilderConstructorIfNeded()
 
     if (properties.isEmpty()) {
       // This is a redacted class, so just emit a single replacementString
       iv.aconst(classDescriptor.name.toString() + "(" + replacementString)
-      AsmUtil.genInvokeAppendMethod(iv, AsmTypes.JAVA_STRING_TYPE, null)
+      AsmUtil.genInvokeAppendMethod(generator, AsmTypes.JAVA_STRING_TYPE, null, null, StackValue.LOCAL_0)
     } else {
       var first = true
       for (propertyDescriptor in properties) {
@@ -201,7 +204,7 @@ private class ToStringGenerator(
           iv.aconst(", " + propertyDescriptor.name
               .asString() + "=$possibleValue")
         }
-        AsmUtil.genInvokeAppendMethod(iv, AsmTypes.JAVA_STRING_TYPE, null)
+        AsmUtil.genInvokeAppendMethod(generator, AsmTypes.JAVA_STRING_TYPE, null, null, StackValue.LOCAL_0)
 
         if (!isRedacted) {
           val type = genOrLoadOnStack(iv, context, propertyDescriptor, 0)
@@ -228,13 +231,13 @@ private class ToStringGenerator(
                   .stringType
             }
           }
-          AsmUtil.genInvokeAppendMethod(iv, asmType, kotlinType, typeMapper)
+          AsmUtil.genInvokeAppendMethod(generator, asmType, kotlinType, typeMapper, StackValue.LOCAL_0)
         }
       }
     }
 
     iv.aconst(")")
-    AsmUtil.genInvokeAppendMethod(iv, AsmTypes.JAVA_STRING_TYPE, null)
+    AsmUtil.genInvokeAppendMethod(generator, AsmTypes.JAVA_STRING_TYPE, null, null, StackValue.LOCAL_0)
 
     iv.invokevirtual("java/lang/StringBuilder", "toString", "()Ljava/lang/String;", false)
     iv.areturn(AsmTypes.JAVA_STRING_TYPE)
